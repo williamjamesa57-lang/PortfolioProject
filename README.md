@@ -18,6 +18,9 @@ pip install -e ".[dev]"
 # setup env
 touch .env
 
+#create data directory
+mkdir data data/temp
+
 #add this to the .env file excluded innitially due to .gitignore and sensitive information safety
 #used for SEC EDGAR credentials (REQUIREMENT by SEC policy)
 SEC_EDGAR_USER_NAME="firstname lastname"

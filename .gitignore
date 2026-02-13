@@ -14,6 +14,7 @@ data/**
 
 #environment
 .env
+quant_portfolio.egg-info
 
 #development tools
 .idea
