@@ -117,14 +117,13 @@ class DataLoader:
         datas_nyse = datas_nyse.dropna(axis=1, how="all")
         datas_nyse = datas_nyse.ffill().bfill()
 
-        datas_nyse.to_csv("./data/nyse_50_stocks.csv")
-
+        datas_nyse.to_csv(self.data_dir / "nyse_50_stocks.csv")
         return datas_nyse
 
     def load_data_nyse(self):
 
         try:
-            datas = pd.read_csv("./data/nyse_50_stocks.csv")
+            datas = pd.read_csv(self.data_dir / "nyse_50_stocks.csv")
             # checker if there is really 50 tickers in the data
             tickers_row = datas.iloc[0]
             tickers = set(tickers_row.dropna())
@@ -148,7 +147,13 @@ class DataLoader:
             email = os.getenv("SEC_EDGAR_USER_EMAIL")
             assert full_name is not None, f"'SEC_EDGAR_USER_NAME' is not set"
             assert email is not None, f"'SEC_EDGAR_USER_EMAIL' is not set"
-            downloader = Downloader(full_name, email, "./data/")
+
+            downloader = Downloader(
+                full_name,
+                email,
+                self.data_dir
+            )
+
             for ticker in self.__tickers_sp_500:
                 downloader.get("10-K", ticker)
 
@@ -173,10 +178,15 @@ class DataLoader:
                 "[ERROR]: The .env file was not found. Please create one at root directory of the project."
             )
 
-    def load_data_sec_filings(self):
+    def load_data_sec_filings(self) -> dict[str, str]:
         try:
+            pattern = str(self.data_dir / "sec-edgar-filings/**/*.txt")
             fillings_dict = {}
-            txt_files = glob.glob("./data/sec-edgar-filings/**/*.txt", recursive=True)
+            txt_files = glob.glob(
+                pattern,
+                recursive=True
+            )
+
             for file_paths in txt_files:
                 p = Path(file_paths)
                 ticker = p.parts[2]
@@ -193,6 +203,3 @@ class DataLoader:
 
         finally:
             return fillings_dict
-
-    def get_source_temp(self):
-        return "./data/temp/"
