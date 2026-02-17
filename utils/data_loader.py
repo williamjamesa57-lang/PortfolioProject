@@ -1,8 +1,11 @@
+import datetime
 import os
+import re
 from pathlib import Path
 
 from sec_edgar_downloader import Downloader
 from dotenv import load_dotenv
+from edgar import Filing, use_local_storage, set_identity
 
 import yfinance as yf
 import numpy as np
@@ -85,14 +88,14 @@ class DataLoader:
             "AMD",
             "WMT",
             "LLY",
-            "JPM",
             "V",
             "XOM",
             "JNJ",
             "MU",
-            "MA",
             "ORCL",
             "COST",
+            "MA",
+            "PG"
         ]
 
     def source_data_nyse(self):
@@ -155,7 +158,11 @@ class DataLoader:
             )
 
             for ticker in self.__tickers_sp_500:
-                downloader.get("10-K", ticker)
+                downloader.get(
+                    "10-K",
+                    ticker,
+                    after=datetime.date(2005,12,1)
+                )
 
             return downloader
         except FileNotFoundError:
@@ -189,8 +196,8 @@ class DataLoader:
 
             for file_paths in txt_files:
                 p = Path(file_paths)
-                ticker = p.parts[2]
-                numericals = p.parts[4]
+                ticker = p.parts[7]
+                numericals = p.parts[9]
                 identification = f"{ticker}_{numericals}"
 
                 with open(p, "r", encoding="utf-8", errors="replace") as f:
@@ -203,3 +210,36 @@ class DataLoader:
 
         finally:
             return fillings_dict
+
+    def load_data_sec_filings_ticker(self, ticker : str) -> dict[str, tuple[str, str]] | None:
+        try:
+            files : str = "sec-edgar-filings/" + ticker + "/**/*.txt"
+            pattern : str = str(self.data_dir / files)
+            fillings_dict : dict[str, tuple[str, str]] = {}
+            txt_files = glob.glob(
+                pattern,
+                recursive=True
+            )
+
+            for file_paths in txt_files:
+                p = Path(file_paths)
+                ticker = p.parts[7]
+                numericals = p.parts[9]
+                identification = f"{ticker}_{numericals}"
+                with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                    head = f.read(2000)
+
+                if re.search(r"<(html|!DOCTYPE\s+html)",head):
+                    tag = "html"
+                else:
+                    tag = "sgml"
+
+                fillings_dict[identification] = (
+                    tag,
+                    str(p)
+                )
+
+            return fillings_dict
+
+        except FileNotFoundError:
+            print(f"{ticker} not found on local data.")

@@ -105,14 +105,14 @@ class TestUnitSECFilings:
             "AMD",
             "WMT",
             "LLY",
-            "JPM",
             "V",
             "XOM",
             "JNJ",
             "MU",
-            "MA",
             "ORCL",
             "COST",
+            "MA",
+            "PG"
         }
 
         loaded_tickers = {key.split("_")[0] for key in self._datas.keys()}

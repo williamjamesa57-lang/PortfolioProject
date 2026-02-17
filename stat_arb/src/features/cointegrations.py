@@ -13,13 +13,19 @@ def determine_top_cointegrated_pairs(given_stack: pd.DataFrame, n: int) -> pd.Da
 
 
 class CointegrationEngine:
-    def __init__(self, data_loader_source: data_loader.DataLoader) -> None:
+    def __init__(
+            self,
+            data_loader_source: data_loader.
+    ) -> None:
         self.__data_loader: data_loader.DataLoader = data_loader_source
         self.__data: pd.DataFrame = self.__data_loader.load_data_nyse()
         self.__log_returns: pd.DataFrame = pd.DataFrame()
         self.__ticker_columns = self.__data.columns
 
-    def conduct_log_transformations_on_prices(self, is_corr_exclusionary=True):
+    def conduct_log_transformations_on_prices(
+            self,
+            is_corr_exclusionary=True
+    ) -> tuple[pd.DataFrame, pd.Series]:
         log_prices: pd.DataFrame = pd.DataFrame()
         log_prices.index = pd.to_datetime(self.__data.index)
 
@@ -56,53 +62,97 @@ class CointegrationEngine:
         self.__log_returns = self.__log_returns.fillna(0)
         return self.__log_returns
 
-    def engel_granger(self) -> pd.DataFrame:
-        log_prices, corr_stack = self.conduct_log_transformations_on_prices(False)
+    def _engel_granger_fun(
+            self,
+            pairs : tuple[str, str],
+            log_prices : pd.DataFrame,
+    ) -> dict[str, float | str]:
+        x = sm.add_constant(log_prices[pairs[1]])
+        model = sm.OLS(log_prices[pairs[0]], x).fit()
+        residual = model.resid
+        adf = adfuller(residual)
+        p = adf[1]
+        c = model.params["const"]
+        beta = model.params[pairs[1]]
 
-        p_residual = []
-        directions = []
-        hedge_ratio = []
-        constant = []
+        return {
+            "direction" : f"{pairs[0]}~{pairs[1]}",
+            "p" : p,
+            "residual" : residual,
+            "constant" : c,
+            "hedge ratio" : beta,
+            "t-statistic" : adf[0]
+        }
+
+    def _engel_granger_determinant(
+            self,
+            results_ab : dict[str, float | str],
+            results_ba: dict[str, float | str],
+    ) -> dict[str, float | str]:
+        if results_ab["p"] <= results_ba["p"]:
+            choice = results_ab
+        else:
+            choice = results_ba
+
+        return choice
+
+    def _MacKinnon_Critical_Value_formula(
+            self,
+            observations : int
+    ) -> float:
+        '''
+        coefficients based from the source's Table 1: Response Surface of Critical Values
+        https://www.econstor.eu/bitstream/10419/67744/1/616664753.pdf
+
+        assumptions
+        N -> INF as current observations per ticker is 1500+ days of closing prices
+        no trend non stationary price nature of relative stock prices
+        has constant as one stock is priced more / less than other
+        acceptable error is 5%
+        '''
+
+        critical_value : float = -3.3377 + (-5.967 / observations) + (-8.98 / observations ** 2)
+        return critical_value
+
+    def _halflife_fun(
+            self
+    ) -> None:
+        pass
+
+    def engel_granger(
+            self
+    ) -> pd.DataFrame:
+        log_prices, corr_stack = self.conduct_log_transformations_on_prices(False)
+        crit_value = self._MacKinnon_Critical_Value_formula(self.__data.shape[0])
+
+        p_residual : list[float] = []
+        directions : list[str] = []
+        hedge_ratio : list[float] = []
+        constant : list[float] = []
+        cointegrated : list[bool]= []
+        t_statistic : list[float]= []
+        half_life : list[float] = []
 
         for pairs in corr_stack.index:
-            tickers = [pairs[0], pairs[1]]
-
-            # A~B
-            x_ab = sm.add_constant(log_prices[tickers[1]])
-            model_ab = sm.OLS(log_prices[tickers[0]], x_ab).fit()
-            residual_ab = model_ab.resid
-            adf_ab = adfuller(residual_ab)
-            p_ab = adf_ab[1]
-
-            # B~A
-            x_ba = sm.add_constant(log_prices[tickers[0]])
-            model_ba = sm.OLS(log_prices[tickers[1]], x_ba).fit()
-            residual_ba = model_ba.resid
-            adf_ba = adfuller(residual_ba)
-            p_ba = adf_ba[1]
-
-            if p_ab <= p_ba:
-                p_residual.append(p_ab)
-                directions.append(f"{pairs[0]}{pairs[1]}")
-                constant.append(model_ab.params["const"])
-                hedge_ratio.append(model_ab.params[pairs[1]])
-            else:
-                p_residual.append(p_ba)
-                directions.append(f"{pairs[1]}{pairs[0]}")
-                constant.append(model_ba.params["const"])
-                hedge_ratio.append(model_ba.params[pairs[0]])
+            ab = self._engel_granger_fun((pairs[0], pairs[1]), log_prices)
+            ba = self._engel_granger_fun((pairs[1], pairs[0]), log_prices)
+            choice = self._engel_granger_determinant(ab, ba)
+            p_residual.append(choice["p"])
+            directions.append(choice["direction"])
+            hedge_ratio.append(choice["hedge ratio"])
+            constant.append(choice["constant"])
+            cointegrated.append(choice["t-statistic"] < crit_value)
+            t_statistic.append(choice["t-statistic"])
 
         corr_stack.insert(loc=0, column="p", value=p_residual)
         corr_stack.insert(loc=0, column="direction", value=directions)
         corr_stack.insert(loc=0, column="constant", value=constant)
         corr_stack.insert(loc=0, column="hedge ratio", value=hedge_ratio)
+        corr_stack.insert(loc=0, column="is cointegrated", value=cointegrated)
 
         return corr_stack
-
 
 if __name__ == "__main__":
     cointegration = CointegrationEngine(data_loader_source=data_loader.DataLoader())
     corr_stack = cointegration.engel_granger()
-    top_5_corr_stack = determine_top_cointegrated_pairs(corr_stack, n=5)
-    top_5_corr_stack.to_csv("top_5_corr_stack.csv")
     pass
