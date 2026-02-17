@@ -1,13 +1,9 @@
-import re
-from pathlib import Path
-
-import bs4 as bs
-from bs4 import BeautifulSoup, Tag
-from numpy.matlib import empty
-from yfinance import ticker
-from edgar import Filing, use_local_storage, set_identity
+from typing import Any
+import numpy as np
+import pandas as pd
+from edgar.entity import EntityFilings
 from utils import data_loader
-from utils.data_loader import DataLoader
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 import os
 
@@ -15,73 +11,59 @@ class NLPExtractor:
     def __init__(
             self,
             data_loader_source: data_loader.DataLoader,
-            given_ticker : str
     ) -> None:
-        self.__k_10_data : dict[str, str] | None= data_loader_source.load_data_sec_filings_ticker(ticker=given_ticker)
+        self.__data_loader_source = data_loader_source
         self.__credentials : str = f"{os.getenv("SEC_EDGAR_USER_NAME")} {os.getenv("SEC_EDGAR_USER_EMAIL")}"
 
-    def extract_features(
+    def extract_features_from_edgar_tools(
             self,
-    ) -> list[str]:
-        use_local_storage()
-        set_identity(self.__credentials)
+            ticker : str
+    ) -> list[dict[str, Any]]:
+        tenk_filings : EntityFilings = self.__data_loader_source.load_data_sec_filings_ticker_edgar_tools(ticker)
+        risk_data : list[dict[str, Any]] = []
+        for entry in tenk_filings:
+            try:
+                form_objects = entry.obj()
+                risk_text = form_objects.risk_factors
+                risk_data.append({
+                    "filing_date" : entry.filing_date,
+                    "report_date" : entry.report_date,
+                    "accession_number" : entry.accession_number,
+                    "risk_factor" : risk_text
+                })
 
-        keys : list[str] = list(self.__k_10_data.keys())
-        extracted_features : list[str] = list()
+            except Exception as e:
+                print(f"error {e}")
 
-        for key in keys:
-            filing : tuple[str, str] = self.__k_10_data[key]
-            risk_factors = ""
+        return risk_data
 
-            if filing[0] == "html":
-                risk_factors = self._extract_item_1a_from_html(filing[1])
-                pass
-            elif filing[0] == "sgml":
-                item = self._load_via_sgml(filing[1])
-                filings_obj = item.obj()
-                risk_factors = filings_obj["Item 1A"]
-
-            extracted_features.append(risk_factors)
-
-        return extracted_features
-
-    def _extract_item_1a_from_html(
+    def get_top_n_words(
             self,
-            path : str
-    ) -> str | None:
-        with open(path, "r", encoding="utf-8") as f:
-            text = f.read()
-        soup = BeautifulSoup(text, "lxml")
+            n : int,
+            extracted_features : list[dict[str, Any]]
+    )-> pd.DataFrame:
 
-        item_1a_heading = None
-        for elem in soup.find_all(['b', 'strong', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span']):
-            text = elem.get_text(strip=True)
-            if re.search(r'item\s+1a\.?', text, re.IGNORECASE):
-                item_1a_heading = elem
-                break
+        vectorizer = TfidfVectorizer(
+            lowercase=True,
+            stop_words="english",
+            token_pattern= r"(?u)\b[A-Za-z]{3,}\b",
+            max_df=0.8,
+            min_df=2,
+            norm="l2",
+            use_idf=True,
+            smooth_idf=True,
+            sublinear_tf=True,
+        )
 
-        if not item_1a_heading:
-            return ""
+        risk_factor_list : list[str] = [item.get("risk_factor")
+                                        if item.get("risk_factor") is not None
+                                        else " "
+                                        for item in extracted_features]
+        tfidf_matrix = vectorizer.fit_transform(risk_factor_list)
+        feature_names = vectorizer.get_feature_names_out()
+        mean_tfidf = np.asarray(tfidf_matrix.mean(axis=0)).flatten()
 
-        parts = [item_1a_heading.get_text(strip=True)]
-        for sibling in item_1a_heading.find_next_siblings():
-            sibling_text = sibling.get_text(strip=True)
-            if sibling_text and re.search(r'item\s+\d+[a-z]?\.?', sibling_text, re.IGNORECASE):
-                break
-            parts.append(sibling.get_text(separator=' ', strip=True))
+        word_scoring = list(zip(feature_names, mean_tfidf))
+        word_scoring.sort(key=lambda x: x[1], reverse=True)
 
-        return ' '.join(parts)
-
-    def _load_via_sgml(
-            self,
-            target_file : str
-    ) -> Filing:
-        path = Path(target_file)
-        return Filing.from_sgml(path)
-
-
-if __name__ == "__main__":
-    loader = DataLoader()
-    nlp = NLPExtractor(loader, "AAPL")
-    results = nlp.extract_features()
-    pass
+        return pd.DataFrame(word_scoring, columns=["word", "tfdif score"])

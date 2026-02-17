@@ -1,5 +1,7 @@
+from statsmodels.regression.linear_model import RegressionResults
 from statsmodels.tsa.stattools import coint, adfuller
 from utils import data_loader
+from typing import Any
 
 import statsmodels.api as sm
 import pandas as pd
@@ -15,7 +17,7 @@ def determine_top_cointegrated_pairs(given_stack: pd.DataFrame, n: int) -> pd.Da
 class CointegrationEngine:
     def __init__(
             self,
-            data_loader_source: data_loader.
+            data_loader_source: data_loader.DataLoader
     ) -> None:
         self.__data_loader: data_loader.DataLoader = data_loader_source
         self.__data: pd.DataFrame = self.__data_loader.load_data_nyse()
@@ -115,9 +117,23 @@ class CointegrationEngine:
         return critical_value
 
     def _halflife_fun(
-            self
-    ) -> None:
-        pass
+            self,
+            is_cointegrated : bool,
+            residuals : np.ndarray[Any, np.dtype[np.float64]],
+    ) -> float:
+        if is_cointegrated:
+            residual_lag : np.ndarray[Any, np.dtype[np.float64]] = np.roll(residuals, 1)
+            residual_lag[0] = 0
+            residual_difference : np.ndarray[tuple[Any]]= residuals - residual_lag
+
+            lagged : Any = sm.add_constant(residual_lag[1:])
+            difference : np.ndarray[tuple[Any]]= residual_difference[1:]
+
+            model : RegressionResults = sm.OLS(difference, lagged).fit()
+            lambda_ = model.params[1]
+            return -np.log(2) / lambda_
+
+        return np.inf
 
     def engel_granger(
             self
@@ -137,22 +153,22 @@ class CointegrationEngine:
             ab = self._engel_granger_fun((pairs[0], pairs[1]), log_prices)
             ba = self._engel_granger_fun((pairs[1], pairs[0]), log_prices)
             choice = self._engel_granger_determinant(ab, ba)
+            is_cointegrated : bool = choice["t-statistic"] < crit_value
+            resid : np.ndarray[Any, np.dtype[np.float64]] = np.array(choice["residual"])
             p_residual.append(choice["p"])
             directions.append(choice["direction"])
             hedge_ratio.append(choice["hedge ratio"])
             constant.append(choice["constant"])
-            cointegrated.append(choice["t-statistic"] < crit_value)
+            cointegrated.append(is_cointegrated)
             t_statistic.append(choice["t-statistic"])
+            half_life.append(self._halflife_fun(is_cointegrated, resid))
 
         corr_stack.insert(loc=0, column="p", value=p_residual)
         corr_stack.insert(loc=0, column="direction", value=directions)
         corr_stack.insert(loc=0, column="constant", value=constant)
         corr_stack.insert(loc=0, column="hedge ratio", value=hedge_ratio)
         corr_stack.insert(loc=0, column="is cointegrated", value=cointegrated)
+        corr_stack.insert(loc=0, column="t_statistic", value=t_statistic)
+        corr_stack.insert(loc=0, column="half_life", value=half_life)
 
         return corr_stack
-
-if __name__ == "__main__":
-    cointegration = CointegrationEngine(data_loader_source=data_loader.DataLoader())
-    corr_stack = cointegration.engel_granger()
-    pass

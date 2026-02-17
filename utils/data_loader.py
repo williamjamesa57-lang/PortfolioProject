@@ -2,11 +2,14 @@ import datetime
 import os
 import re
 from pathlib import Path
+from typing import Any
 
+from edgar.entity import EntityFilings
+from scipy.constants import year
 from sec_edgar_downloader import Downloader
 from dotenv import load_dotenv
-from edgar import Filing, use_local_storage, set_identity
-
+from edgar import Filing, use_local_storage, set_identity, Company
+from datetime import datetime
 import yfinance as yf
 import numpy as np
 import pandas as pd
@@ -243,3 +246,18 @@ class DataLoader:
 
         except FileNotFoundError:
             print(f"{ticker} not found on local data.")
+
+    def load_data_sec_filings_ticker_edgar_tools(
+            self,
+            ticker : str
+    ) -> EntityFilings | None:
+        try:
+            load_dotenv()
+            identification : str = f"{os.getenv("SEC_EDGAR_USER_NAME")} {os.getenv("SEC_EDGAR_USER_EMAIL")}"
+            set_identity(identification)
+            company : Company = Company(ticker)
+            years : list[int] = list(np.arange(2006, 2026, 1))
+            tenk_filings = company.get_filings(form="10-K", year=years)
+            return tenk_filings
+        except Exception as e:
+            print(f"error {e}")

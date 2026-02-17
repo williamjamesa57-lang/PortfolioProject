@@ -1,51 +1,83 @@
-# Portfolio Project
+# quant-portfolio
 
-## Project 1: Statistical Arbitrage Engine
+Two side projects I've been building to get more hands-on with quant methods. Both are research/learning exercises — not production trading systems.
 
-## Project 2: Earning Surprise Predictor
+---
 
-# Timeline
-- **Week 1: Data Loader Pipeline**
-  - **Project 1:** Statistical Arbitrage Engine (data loader component)
-  - **Project 2:** Earning Surprise Predictor (data loader component)
+## Projects
+
+### 1. Statistical Arbitrage Engine
+Mean-reversion pairs trading strategy on NYSE's top 50 tickers by volume. Uses the Engle-Granger cointegration test to identify pairs and generate trade signals.
+
+**Status:** data loader + cointegration test done, signal generation WIP
+
+### 2. Earnings Surprise Predictor
+Logistic regression model to predict whether a company will beat or miss earnings estimates. Pulls features from SEC filings (10-Q/10-K) using basic NLP.
+
+**Status:** data loader done, NLP extractor in progress
+
+---
 
 ## Setup
 
 ```bash
-# Install dependencies
 pip install -e ".[dev]"
-
-# setup env
 touch .env
-
-#create data directory
 mkdir data data/temp
+```
 
-#add this to the .env file excluded innitially due to .gitignore and sensitive information safety
-#used for SEC EDGAR credentials (REQUIREMENT by SEC policy)
-SEC_EDGAR_USER_NAME="firstname lastname"
-# do not use generic email. Use valid email or your access to the EDGAR SEC API will be denied
-SEC_EDGAR_USER_EMAIL="youremail@.example.com"
+You'll need to add SEC EDGAR credentials to `.env` — required by their API policy:
 
-+ # Fast unit tests (uses cached data - runs in <5s)
-+ pytest tests/ -m "not slow" -v
-+ 
-+ # Integration tests (hits SEC API - run weekly)
-+ pytest tests/ -m slow -v
+```
+SEC_EDGAR_USER_NAME="Firstname Lastname"
+SEC_EDGAR_USER_EMAIL="youremail@example.com"
+```
 
-# Download SEC filings (creates data/sec_filings/)
+> Use a real name and email. SEC will block access for generic/fake credentials.
+
+Download filings:
+```bash
 python -c "from utils.data_loader import DataLoader; DataLoader().load_sec_filings()"
 ```
 
-## License
+---
 
-- **Code**: [MIT License](LICENSE) — free to use/modify
-- **Data**: NOT included in this repo per source terms of data providers:
-  - NYSE prices: Downloaded via `yfinance` (Yahoo Finance ToS applies — non-commercial use only)
-  - SEC filings: Downloaded via `sec-edgar-downloader` (U.S. government public domain, but bulk redistribution discouraged per SEC guidelines)
-- **Never commit raw data** — see `.gitignore`. Users must run download scripts locally.
+## Tests
 
-## NOTES
-- Findings that might be extracted from the two models are not financial advice and is not guaranteed to hold for future outcomes
-- Trading Financial Assets involves risk of loss
-- Consult a Registered Financial Advisor / Expert before trading real capital
+```bash
+# fast, uses cached data (~5s)
+pytest tests/ -m "not slow" -v
+
+# hits SEC API directly, run sparingly
+pytest tests/ -m slow -v
+```
+
+---
+
+## Timeline
+
+| Week | Project 1 (Stat Arb) | Project 2 (Earnings) |
+|------|----------------------|----------------------|
+| 1 | Data loader pipeline | Data loader pipeline |
+| 2 | Cointegration component | NLP extractor component |
+
+---
+
+## Data & License
+
+**Code:** MIT — do whatever you want with it.
+
+**Data:** Not included. You have to download it yourself:
+- Prices: `yfinance` (Yahoo Finance ToS — non-commercial)
+- Filings: `sec-edgar-downloader` (public domain, but SEC discourages bulk redistribution)
+
+Never commit raw data — it's in `.gitignore` already.
+
+---
+
+## Notes
+> 🚀🍸 **NOT FINANCIAL ADVICE** 🍸🚀
+- This is a research/learning project. The models output numbers, not money.
+- Past results mean nothing. The market will humble you.
+- If you YOLO your savings into a pairs trade because a cointegration test said so, that's entirely on you.
+- Consult a real financial advisor before touching live capital. A licensed one. Not this repo.
